@@ -830,20 +830,6 @@ public class TlsProtocolHandler
     }
 
     /**
-     * Connects to the remote system.
-     * 
-     * @param verifyer Will be used when a certificate is received to verify that this
-     *            certificate is accepted by the client.
-     * @throws IOException If handshake was not successful.
-     * 
-     * @deprecated use version taking TlsClient
-     */
-    public void connect(CertificateVerifyer verifyer) throws IOException
-    {
-        this.connect(new LegacyTlsClient(verifyer));
-    }
-
-    /**
      * Connects to the remote system using client authentication
      * 
      * @param tlsClient
