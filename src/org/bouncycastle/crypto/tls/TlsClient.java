@@ -36,4 +36,8 @@ public interface TlsClient
     TlsCompression getCompression() throws IOException;
 
     TlsCipher getCipher() throws IOException;
+    
+    byte[] getSessionID();
+
+    TlsClientContext getClientContext();
 }

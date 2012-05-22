@@ -37,11 +37,13 @@ public class TlsProtocolHandler
     private static final short CS_CLIENT_FINISHED_SEND = 10;
     private static final short CS_SERVER_CHANGE_CIPHER_SPEC_RECEIVED = 11;
     private static final short CS_DONE = 12;
-
+    
     private static final byte[] emptybuf = new byte[0];
 
     private static final String TLS_ERROR_MESSAGE = "Internal TLS error, this could be an attack";
 
+    private boolean debug = false;
+    
     /*
      * Queues for data from some protocols.
      */
@@ -73,9 +75,22 @@ public class TlsProtocolHandler
     private TlsKeyExchange keyExchange = null;
     private TlsAuthentication authentication = null;
     private CertificateRequest certificateRequest = null;
+    private byte[] serverVerifyData = null;
 
+    private byte[] clientVerifyData = null;
     private short connection_state = 0;
 
+    private boolean resumed = false;
+    private boolean renegotiated = false;
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public void setDEBUG(boolean debug) {
+        this.debug = debug;
+    }
+    
     private static SecureRandom createSecureRandom()
     {
         /*
@@ -199,11 +214,13 @@ public class TlsProtocolHandler
 
     private void processHandshakeMessage(short type, byte[] buf) throws IOException
     {
+    	try{
         ByteArrayInputStream is = new ByteArrayInputStream(buf);
 
         switch (type)
         {
             case HandshakeType.certificate:
+            	if(debug)System.out.println("Received Certificate Message");
             {
                 switch (connection_state)
                 {
@@ -230,9 +247,12 @@ public class TlsProtocolHandler
                 break;
             }
             case HandshakeType.finished:
+            	if(debug)System.out.println("Received Finisched Message");
                 switch (connection_state)
                 {
+                
                     case CS_SERVER_CHANGE_CIPHER_SPEC_RECEIVED:
+                        
                         /*
                          * Read the checksum from the finished message, it has always 12
                          * bytes for TLS 1.0 and 36 for SSLv3.
@@ -242,9 +262,8 @@ public class TlsProtocolHandler
                         int checksumLength = isTls ? 12 : 36;
                         byte[] serverVerifyData = new byte[checksumLength];
                         TlsUtils.readFully(serverVerifyData, is);
-
+                        this.serverVerifyData = serverVerifyData;
                         assertEmpty(is);
-
                         /*
                          * Calculate our own checksum.
                          */
@@ -262,8 +281,27 @@ public class TlsProtocolHandler
                             this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
                         }
 
-                        connection_state = CS_DONE;
+                        if(resumed) {
 
+                            	// update handshake data with the received server finished
+                                rs.updateHandshakeData(new byte[]{HandshakeType.finished,0x00,0x00, (byte) buf.length}, 0, 4);
+                                rs.updateHandshakeData(buf, 0, buf.length);
+                            
+                                /*
+                                 * Send our finished message.
+                                 */
+                                byte[] clientVerifyData = TlsUtils.calculateVerifyData(tlsClientContext,
+                                    "client finished", rs.getCurrentHash(TlsUtils.SSL_CLIENT));
+                                this.clientVerifyData = clientVerifyData;
+                                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                                TlsUtils.writeUint8(HandshakeType.finished, bos);
+                                TlsUtils.writeOpaque24(clientVerifyData, bos);
+                                byte[] message = bos.toByteArray();
+
+                                rs.writeMessage(ContentType.handshake, message, 0, message.length);            
+                        }
+                        
+                        connection_state = CS_DONE;
                         /*
                          * We are now ready to receive application data.
                          */
@@ -274,6 +312,7 @@ public class TlsProtocolHandler
                 }
                 break;
             case HandshakeType.server_hello:
+            	if(debug)System.out.println("Received Server Hello Message");
                 switch (connection_state)
                 {
                     case CS_CLIENT_HELLO_SEND:
@@ -301,9 +340,11 @@ public class TlsProtocolHandler
                         {
                             this.failWithError(AlertLevel.fatal, AlertDescription.illegal_parameter);
                         }
-
+                        if(Arrays.areEqual(sessionID, tlsClient.getSessionID())){
+                            resumed = true;
+                        }
                         this.tlsClient.notifySessionID(sessionID);
-
+                        
                         /*
                          * Find out which CipherSuite the server has chosen and check that
                          * it was one of the offered ones.
@@ -424,19 +465,34 @@ public class TlsProtocolHandler
                              */
                             if (secure_negotiation)
                             {
-                                byte[] renegExtValue = (byte[])serverExtensions.get(EXT_RenegotiationInfo);
-
-                                if (!Arrays.constantTimeAreEqual(renegExtValue,
-                                    createRenegotiationInfo(emptybuf)))
-                                {
-                                    this.failWithError(AlertLevel.fatal,
-                                        AlertDescription.handshake_failure);
-                                }
+                        	byte[] renegExtValue = (byte[])serverExtensions.get(EXT_RenegotiationInfo);
+                        	if(!renegotiated){
+                        	    if(renegExtValue.length!=1||renegExtValue[0]!=0){
+                        		this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
+                        	    }
+                        	} else {
+				/*
+				 * RFC 5746 3.5. The client MUST then verify
+				 * that the first half of the
+				 * "renegotiated_connection" field is equal to
+				 * the saved client_verify_data value, and the
+				 * second half is equal to the saved
+				 * server_verify_data value. If they are not,
+				 * the client MUST abort the handshake.
+				 */
+                        	    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        	    bos.write(clientVerifyData);
+                        	    bos.write(serverVerifyData);
+                        	    if (!Arrays.constantTimeAreEqual(renegExtValue, createRenegotiationInfo(bos.toByteArray())))
+                        	    {
+                        		this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
+                        	    }                     	    
+                        	}
                             }
 
                             tlsClient.notifySecureRenegotiation(secure_negotiation);
                         }
-
+                        
                         if (clientExtensions != null)
                         {
                             tlsClient.processServerExtensions(serverExtensions);
@@ -451,6 +507,7 @@ public class TlsProtocolHandler
                 }
                 break;
             case HandshakeType.server_hello_done:
+            	if(debug)System.out.println("Received Server Hello Done Message");
                 switch (connection_state)
                 {
                     case CS_SERVER_HELLO_RECEIVED:
@@ -561,7 +618,7 @@ public class TlsProtocolHandler
                          */
                         byte[] clientVerifyData = TlsUtils.calculateVerifyData(tlsClientContext,
                             "client finished", rs.getCurrentHash(TlsUtils.SSL_CLIENT));
-
+                        this.clientVerifyData = clientVerifyData;
                         ByteArrayOutputStream bos = new ByteArrayOutputStream();
                         TlsUtils.writeUint8(HandshakeType.finished, bos);
                         TlsUtils.writeOpaque24(clientVerifyData, bos);
@@ -576,6 +633,7 @@ public class TlsProtocolHandler
                 }
                 break;
             case HandshakeType.server_key_exchange:
+            	if(debug)System.out.println("Received Server Key Exchange Message");
             {
                 switch (connection_state)
                 {
@@ -602,6 +660,7 @@ public class TlsProtocolHandler
                 break;
             }
             case HandshakeType.certificate_request:
+            	if(debug)System.out.println("Received Certificate Request Message");
             {
                 switch (connection_state)
                 {
@@ -657,6 +716,7 @@ public class TlsProtocolHandler
                 break;
             }
             case HandshakeType.hello_request:
+            	if(debug)System.out.println("Received Hello Request Message");
                 /*
                  * RFC 2246 7.4.1.1 Hello request This message will be ignored by the
                  * client if the client is currently negotiating a session. This message
@@ -666,8 +726,9 @@ public class TlsProtocolHandler
                  */
                 if (connection_state == CS_DONE)
                 {
-                    // Renegotiation not supported yet
-                    sendAlert(AlertLevel.warning, AlertDescription.no_renegotiation);
+                    	 // renegotiate this session
+                    	this.renegotiated  = true;
+                	 this.connect(this.tlsClient);
                 }
                 break;
             case HandshakeType.client_key_exchange:
@@ -678,6 +739,9 @@ public class TlsProtocolHandler
                 this.failWithError(AlertLevel.fatal, AlertDescription.unexpected_message);
                 break;
         }
+    	} catch (Exception e ){
+    		e.printStackTrace();
+    	}
     }
 
     private void processApplicationData()
@@ -767,12 +831,23 @@ public class TlsProtocolHandler
 
             /*
              * Check if we are in the correct connection state.
+             * Either we are finished or a session was resumed.
              */
-            if (this.connection_state != CS_CLIENT_FINISHED_SEND)
+            if(!(this.connection_state == CS_CLIENT_FINISHED_SEND || this.resumed && this.connection_state == CS_SERVER_HELLO_RECEIVED))
             {
                 this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
             }
-
+            
+            if(this.resumed){
+                /*
+                 * Send our change cipher spec
+                 */
+                byte[] cmessage = new byte[]{1};
+                rs.writeMessage(ContentType.change_cipher_spec, cmessage, 0,
+                    cmessage.length);       
+                rs.clientCipherSpecDecided(tlsClient.getCompression(), tlsClient.getCipher());
+            }
+            
             rs.serverClientSpecReceived();
 
             this.connection_state = CS_SERVER_CHANGE_CIPHER_SPEC_RECEIVED;
@@ -841,7 +916,8 @@ public class TlsProtocolHandler
         {
             throw new IllegalArgumentException("'tlsClient' cannot be null");
         }
-        if (this.tlsClient != null)
+      
+        if (this.tlsClient != null && !this.tlsClient.equals(tlsClient))
         {
             throw new IllegalStateException("connect can only be called once");
         }
@@ -851,7 +927,13 @@ public class TlsProtocolHandler
          * 
          * First, generate some random data.
          */
-        this.securityParameters = new SecurityParameters();
+        // use old security parameters if context exists (resumed session) 
+        if(tlsClient.getClientContext()==null){
+            this.securityParameters = new SecurityParameters();
+        } else {
+            this.securityParameters = tlsClient.getClientContext().getSecurityParameters();
+        }
+            
         this.securityParameters.clientRandom = new byte[32];
         random.nextBytes(securityParameters.clientRandom);
         TlsUtils.writeGMTUnixTime(securityParameters.clientRandom, 0);
@@ -862,7 +944,7 @@ public class TlsProtocolHandler
 
         this.tlsClient = tlsClient;
         this.tlsClient.init(tlsClientContext);
-
+        
         ByteArrayOutputStream os = new ByteArrayOutputStream();
 
         ProtocolVersion client_version = this.tlsClient.getClientVersion();
@@ -874,9 +956,14 @@ public class TlsProtocolHandler
         os.write(securityParameters.clientRandom);
 
         /*
-         * Length of Session id
+         * Write SessionID
          */
-        TlsUtils.writeUint8((short)0, os);
+        if(tlsClient.getSessionID()==null){
+            TlsUtils.writeUint8((short)0, os);
+        } else {
+            TlsUtils.writeUint8((short)tlsClient.getSessionID().length, os);
+            os.write(tlsClient.getSessionID());
+        }
 
         /*
          * Cipher suites
@@ -886,6 +973,15 @@ public class TlsProtocolHandler
         // Integer -> byte[]
         this.clientExtensions = this.tlsClient.getClientExtensions();
 
+	/*
+	 * RFC 5746 3.5. The client MUST include the "renegotiation_info"
+	 * extension in the ClientHello, containing the saved
+	 * client_verify_data. The SCSV MUST NOT be included.
+	 */
+        if(this.renegotiated){
+            this.clientExtensions.put(EXT_RenegotiationInfo, createRenegotiationInfo(clientVerifyData));
+        }
+        
         // Cipher Suites (and SCSV)
         {
             /*
@@ -1007,6 +1103,7 @@ public class TlsProtocolHandler
         {
             if (!this.closed)
             {
+                e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, e.getAlertDescription());
             }
             throw e;
@@ -1015,6 +1112,7 @@ public class TlsProtocolHandler
         {
             if (!this.closed)
             {
+            	e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, AlertDescription.internal_error);
             }
             throw e;
@@ -1023,6 +1121,7 @@ public class TlsProtocolHandler
         {
             if (!this.closed)
             {
+            	e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, AlertDescription.internal_error);
             }
             throw e;
@@ -1039,6 +1138,7 @@ public class TlsProtocolHandler
         {
             if (!this.closed)
             {
+                e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, e.getAlertDescription());
             }
             throw e;
@@ -1047,6 +1147,7 @@ public class TlsProtocolHandler
         {
             if (!closed)
             {
+                e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, AlertDescription.internal_error);
             }
             throw e;
@@ -1055,6 +1156,7 @@ public class TlsProtocolHandler
         {
             if (!closed)
             {
+                e.printStackTrace();
                 this.failWithError(AlertLevel.fatal, AlertDescription.internal_error);
             }
             throw e;
@@ -1127,11 +1229,11 @@ public class TlsProtocolHandler
      * <p/>
      * Can be used for normal closure too.
      * 
-     * @param alertLevel The level of the alert, an be AlertLevel.fatal or AL_warning.
-     * @param alertDescription The exact alert message.
+     * @param fatal The level of the alert, an be AlertLevel.fatal or AL_warning.
+     * @param unexpectedMessage The exact alert message.
      * @throws IOException If alert was fatal.
      */
-    private void failWithError(short alertLevel, short alertDescription) throws IOException
+    private void failWithError(short fatal, short unexpectedMessage) throws IOException
     {
         /*
          * Check if the connection is still open.
@@ -1143,16 +1245,16 @@ public class TlsProtocolHandler
              */
             this.closed = true;
 
-            if (alertLevel == AlertLevel.fatal)
+            if (fatal == AlertLevel.fatal)
             {
                 /*
                  * This is a fatal message.
                  */
                 this.failedWithError = true;
             }
-            sendAlert(alertLevel, alertDescription);
+            sendAlert(fatal, unexpectedMessage);
             rs.close();
-            if (alertLevel == AlertLevel.fatal)
+            if (fatal == AlertLevel.fatal)
             {
                 throw new IOException(TLS_ERROR_MESSAGE);
             }
@@ -1163,12 +1265,10 @@ public class TlsProtocolHandler
         }
     }
 
-    private void sendAlert(short alertLevel, short alertDescription) throws IOException
+    private void sendAlert(short fatal, short unexpectedMessage) throws IOException
     {
-        byte[] error = new byte[2];
-        error[0] = (byte)alertLevel;
-        error[1] = (byte)alertDescription;
-
+        byte[] error = new byte[] {(byte) fatal, (byte) unexpectedMessage};
+        System.err.println("[sending alert] level: " + fatal + " description: " + unexpectedMessage);
         rs.writeMessage(ContentType.alert, error, 0, 2);
     }
 

@@ -19,6 +19,20 @@ public abstract class PSKTlsClient extends AbstractTlsClient
         this.pskIdentity = pskIdentity;
     }
 
+    public static int[] getDefaultCipherSuites(){
+    	 return new int[] {
+    	            CipherSuite.TLS_DHE_PSK_WITH_AES_256_CBC_SHA,
+    	            CipherSuite.TLS_DHE_PSK_WITH_AES_128_CBC_SHA,
+    	            CipherSuite.TLS_DHE_PSK_WITH_3DES_EDE_CBC_SHA,
+    	            CipherSuite.TLS_RSA_PSK_WITH_AES_256_CBC_SHA,
+    	            CipherSuite.TLS_RSA_PSK_WITH_AES_128_CBC_SHA,
+    	            CipherSuite.TLS_RSA_PSK_WITH_3DES_EDE_CBC_SHA,
+    	            CipherSuite.TLS_PSK_WITH_AES_256_CBC_SHA,
+    	            CipherSuite.TLS_PSK_WITH_AES_128_CBC_SHA,
+    	            CipherSuite.TLS_PSK_WITH_3DES_EDE_CBC_SHA, };
+    
+    }
+
     public int[] getCipherSuites()
     {
         return new int[] {
