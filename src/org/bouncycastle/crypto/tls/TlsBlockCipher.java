@@ -2,7 +2,6 @@ package org.bouncycastle.crypto.tls;
 
 import java.io.IOException;
 import java.security.SecureRandom;
-
 import org.bouncycastle.crypto.BlockCipher;
 import org.bouncycastle.crypto.Digest;
 import org.bouncycastle.crypto.params.KeyParameter;
@@ -10,8 +9,8 @@ import org.bouncycastle.crypto.params.ParametersWithIV;
 import org.bouncycastle.util.Arrays;
 
 /**
- * A generic TLS 1.0 / SSLv3 block cipher.
- * This can be used for AES or 3DES for example.
+ * A generic TLS 1.1, TLS 1.0 and SSLv3 block cipher. This can be used for AES
+ * or 3DES for example.
  */
 public class TlsBlockCipher implements TlsCipher
 {
@@ -23,26 +22,25 @@ public class TlsBlockCipher implements TlsCipher
     protected TlsMac writeMac;
     protected TlsMac readMac;
 
-	public TlsMac getWriteMac()
-	{
-		return writeMac;
-	}
+    public TlsMac getWriteMac()
+    {
+        return writeMac;
+    }
 
-	public TlsMac getReadMac()
-	{
-		return readMac;
-	}
+    public TlsMac getReadMac()
+    {
+        return readMac;
+    }
 
-    public TlsBlockCipher(TlsClientContext context, BlockCipher encryptCipher,
-        BlockCipher decryptCipher, Digest writeDigest, Digest readDigest, int cipherKeySize)
+    public TlsBlockCipher(TlsClientContext context, BlockCipher encryptCipher, BlockCipher decryptCipher,
+            Digest writeDigest, Digest readDigest, int cipherKeySize)
     {
         this.context = context;
         this.encryptCipher = encryptCipher;
         this.decryptCipher = decryptCipher;
 
-        int key_block_size = (2 * cipherKeySize) + writeDigest.getDigestSize()
-            + readDigest.getDigestSize() + encryptCipher.getBlockSize()
-            + decryptCipher.getBlockSize();
+        int key_block_size = (2 * cipherKeySize) + writeDigest.getDigestSize() + readDigest.getDigestSize()
+                + encryptCipher.getBlockSize() + decryptCipher.getBlockSize();
 
         byte[] key_block = TlsUtils.calculateKeyBlock(context, key_block_size);
 
@@ -55,30 +53,50 @@ public class TlsBlockCipher implements TlsCipher
         offset += readDigest.getDigestSize();
 
         // Init Ciphers
-        this.initCipher(true, encryptCipher, key_block, cipherKeySize, offset, offset
-            + (cipherKeySize * 2));
+        this.initCipher(true, encryptCipher, key_block, cipherKeySize, offset, offset + (cipherKeySize * 2));
         offset += cipherKeySize;
-        this.initCipher(false, decryptCipher, key_block, cipherKeySize, offset, offset
-            + cipherKeySize + encryptCipher.getBlockSize());
+        this.initCipher(false, decryptCipher, key_block, cipherKeySize, offset, offset + cipherKeySize
+                + encryptCipher.getBlockSize());
 
     }
 
-    protected void initCipher(boolean forEncryption, BlockCipher cipher, byte[] key_block,
-        int key_size, int key_offset, int iv_offset)
+    protected void initCipher(boolean forEncryption, BlockCipher cipher, byte[] key_block, int key_size,
+            int key_offset, int iv_offset)
     {
         KeyParameter key_parameter = new KeyParameter(key_block, key_offset, key_size);
-        ParametersWithIV parameters_with_iv = new ParametersWithIV(key_parameter, key_block,
-            iv_offset, cipher.getBlockSize());
+        ParametersWithIV parameters_with_iv = new ParametersWithIV(key_parameter, key_block, iv_offset,
+                cipher.getBlockSize());
         cipher.init(forEncryption, parameters_with_iv);
     }
 
     public byte[] encodePlaintext(short type, byte[] plaintext, int offset, int len)
     {
         int blocksize = encryptCipher.getBlockSize();
+        boolean isTls = context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv10
+                .getFullVersion();
+        byte[] mac = writeMac.calculateMac(type, plaintext, offset, len);
+
+        // if TLS 1.1 or higher: prefix the plaintext
+        if (context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv11.getFullVersion())
+        {
+            // generate a random number
+            byte[] prefix = new byte[blocksize];
+            byte[] prefixedPlaintext = new byte[plaintext.length + prefix.length];
+            context.getSecureRandom().nextBytes(prefix);
+
+            // move forward the plaintext
+            System.arraycopy(plaintext, offset, prefixedPlaintext, offset + prefix.length, len);
+
+            // prefix the plaintext
+            System.arraycopy(prefix, 0, prefixedPlaintext, offset, prefix.length);
+
+            // alter plaintext and len
+            plaintext = prefixedPlaintext;
+            len += prefix.length;
+        }
+
         int minPaddingSize = blocksize - ((len + writeMac.getSize() + 1) % blocksize);
         int paddingSize = minPaddingSize;
-
-        boolean isTls = context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv10.getFullVersion();
 
         if (isTls)
         {
@@ -91,25 +109,22 @@ public class TlsBlockCipher implements TlsCipher
         int totalsize = len + writeMac.getSize() + paddingSize + 1;
         byte[] outbuf = new byte[totalsize];
         System.arraycopy(plaintext, offset, outbuf, 0, len);
-        byte[] mac = writeMac.calculateMac(type, plaintext, offset, len);
         System.arraycopy(mac, 0, outbuf, len, mac.length);
         int paddoffset = len + mac.length;
         for (int i = 0; i <= paddingSize; i++)
         {
-            outbuf[i + paddoffset] = (byte)paddingSize;
+            outbuf[i + paddoffset] = (byte) paddingSize;
         }
         for (int i = 0; i < totalsize; i += blocksize)
         {
             encryptCipher.processBlock(outbuf, i, outbuf, i);
         }
+
         return outbuf;
     }
 
-    public byte[] decodeCiphertext(short type, byte[] ciphertext, int offset, int len)
-        throws IOException
+    public byte[] decodeCiphertext(short type, byte[] ciphertext, int offset, int len) throws IOException
     {
-        // TODO TLS 1.1 (RFC 4346) introduces an explicit IV
-
         int minLength = readMac.getSize() + 1;
         int blocksize = decryptCipher.getBlockSize();
         boolean decrypterror = false;
@@ -148,7 +163,8 @@ public class TlsBlockCipher implements TlsCipher
         // Note: interpret as unsigned byte
         int paddingsize = paddingsizebyte & 0xff;
 
-        boolean isTls = context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv10.getFullVersion();
+        boolean isTls = context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv10
+                .getFullVersion();
 
         int maxPaddingSize = len - minLength;
         if (!isTls)
@@ -160,8 +176,7 @@ public class TlsBlockCipher implements TlsCipher
         {
             decrypterror = true;
             paddingsize = 0;
-        }
-        else if (isTls)
+        } else if (isTls)
         {
             /*
              * Now, check all the padding-bytes (constant-time comparison).
@@ -181,20 +196,24 @@ public class TlsBlockCipher implements TlsCipher
         }
 
         /*
-         * We now don't care if padding verification has failed or not, we will calculate
-         * the mac to give an attacker no kind of timing profile he can use to find out if
-         * mac verification failed or padding verification failed.
+         * We now don't care if padding verification has failed or not, we will
+         * calculate the mac to give an attacker no kind of timing profile he
+         * can use to find out if mac verification failed or padding
+         * verification failed.
          */
         int plaintextlength = len - minLength - paddingsize;
+        if (context.getServerVersion().getFullVersion() >= ProtocolVersion.TLSv11.getFullVersion())
+        {
+            plaintextlength = plaintextlength - decryptCipher.getBlockSize();
+            offset += decryptCipher.getBlockSize();
+        }
         byte[] calculatedMac = readMac.calculateMac(type, ciphertext, offset, plaintextlength);
 
         /*
          * Check all bytes in the mac (constant-time comparison).
          */
         byte[] decryptedMac = new byte[calculatedMac.length];
-        System.arraycopy(ciphertext, offset + plaintextlength, decryptedMac, 0,
-            calculatedMac.length);
-
+        System.arraycopy(ciphertext, offset + plaintextlength, decryptedMac, 0, calculatedMac.length);
         if (!Arrays.constantTimeAreEqual(calculatedMac, decryptedMac))
         {
             decrypterror = true;
@@ -215,7 +234,7 @@ public class TlsBlockCipher implements TlsCipher
 
     protected int chooseExtraPadBlocks(SecureRandom r, int max)
     {
-//        return r.nextInt(max + 1);
+        // return r.nextInt(max + 1);
 
         int x = r.nextInt();
         int n = lowestBitSet(x);
