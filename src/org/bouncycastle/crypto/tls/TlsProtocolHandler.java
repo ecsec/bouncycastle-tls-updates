@@ -327,6 +327,7 @@ public class TlsProtocolHandler
                         }
 
                         this.tlsClientContext.setServerVersion(server_version);
+                        this.tlsClientContext.setClientVersion(server_version);
                         this.tlsClient.notifyServerVersion(server_version);
 
                         /*
@@ -950,7 +951,8 @@ public class TlsProtocolHandler
         ProtocolVersion client_version = this.tlsClient.getClientVersion();
         this.tlsClientContext.setClientVersion(client_version);
         // TODO For SSLv3 support, server version needs to be set to ProtocolVersion.SSLv3
-        this.tlsClientContext.setServerVersion(client_version);
+        // set the minimum supported tls version here
+        this.tlsClientContext.setServerVersion(ProtocolVersion.TLSv10);
         TlsUtils.writeVersion(client_version, os);
 
         os.write(securityParameters.clientRandom);

@@ -14,7 +14,8 @@ public abstract class AbstractTlsClient implements TlsClient {
     protected int selectedCompressionMethod;
     private boolean secureRenegotiation;
     private final String fullyQualifiedDomainName;
-
+    private ProtocolVersion clientVersion = ProtocolVersion.TLSv10;
+    
     private byte[] sessionID;
 
     protected AbstractTlsClient(String fqdn) {
@@ -48,8 +49,13 @@ public abstract class AbstractTlsClient implements TlsClient {
     }
 
     @Override
+    public void setClientVersion(ProtocolVersion clientVersion) {
+        this.clientVersion = clientVersion;
+    }
+    
+    @Override
     public final ProtocolVersion getClientVersion() {
-	return ProtocolVersion.TLSv11;
+        return this.clientVersion;
     }
 
     @Override
@@ -64,9 +70,10 @@ public abstract class AbstractTlsClient implements TlsClient {
 
     @Override
     public void notifyServerVersion(ProtocolVersion serverVersion) throws IOException {
-	if (!ProtocolVersion.TLSv10.equals(serverVersion)) {
-	    throw new TlsFatalAlert(AlertDescription.illegal_parameter);
-	}
+    // we only accept TLS 1.0 and higher
+    if (!(serverVersion.getFullVersion()>=ProtocolVersion.TLSv10.getFullVersion())) {
+        throw new TlsFatalAlert(AlertDescription.illegal_parameter);
+    }
     }
 
     @Override

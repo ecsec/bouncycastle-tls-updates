@@ -22,6 +22,8 @@ public interface TlsClient
 
     void notifySelectedCipherSuite(int selectedCipherSuite);
 
+    void setClientVersion(ProtocolVersion version);
+    
     void notifySelectedCompressionMethod(short selectedCompressionMethod);
 
     void notifySecureRenegotiation(boolean secureNegotiation) throws IOException;

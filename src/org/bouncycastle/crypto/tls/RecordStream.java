@@ -4,11 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import org.bouncycastle.crypto.Digest;
 
 /**
- * An implementation of the TLS 1.0 record layer, allowing downgrade to SSLv3.
+ * An implementation of the TLS 1.0/1.1 record layer, allowing downgrade to SSLv3.
  */
 class RecordStream
 {
@@ -57,10 +56,10 @@ class RecordStream
     {
         short type = TlsUtils.readUint8(is);
 
-        // TODO In light of versioning and SSLv3, what should we expect here?
-        ProtocolVersion expectedVersion = ProtocolVersion.TLSv10; //context.getServerVersion();
-        if (!expectedVersion.equals(TlsUtils.readVersion(is)))
-        {
+        ProtocolVersion serverVersion = TlsUtils.readVersion(is);
+        // if serverVersion higher than the maximum version we support or lower as the minimum version we support
+        if (serverVersion.getFullVersion() > context.getClientVersion().getFullVersion()
+                || serverVersion.getFullVersion() < context.getServerVersion().getFullVersion()) {
             throw new TlsFatalAlert(AlertDescription.illegal_parameter);
         }
 
@@ -73,6 +72,7 @@ class RecordStream
     {
         byte[] buf = new byte[len];
         TlsUtils.readFully(buf, is);
+
         byte[] decoded = readCipher.decodeCiphertext(type, buf, 0, buf.length);
 
         OutputStream cOut = readCompression.decompress(buffer);
@@ -84,18 +84,20 @@ class RecordStream
 
         cOut.write(decoded, 0, decoded.length);
         cOut.flush();
+
         return getBufferContents();
     }
 
     protected void writeMessage(short type, byte[] message, int offset, int len) throws IOException
     {
+
         if (type == ContentType.handshake)
         {
             updateHandshakeData(message, offset, len);
         }
 
         OutputStream cOut = writeCompression.compress(buffer);
-
+        
         byte[] ciphertext;
         if (cOut == buffer)
         {
@@ -106,20 +108,20 @@ class RecordStream
             cOut.write(message, offset, len);
             cOut.flush();
             byte[] compressed = getBufferContents();
+
             ciphertext = writeCipher.encodePlaintext(type, compressed, 0, compressed.length);
         }
 
         byte[] writeMessage = new byte[ciphertext.length + 5];
         TlsUtils.writeUint8(type, writeMessage, 0);
-        // TODO In light of versioning, what should we send here?
-//        TlsUtils.writeVersion(context.getServerVersion(), writeMessage, 1);
-        TlsUtils.writeVersion(ProtocolVersion.TLSv10, writeMessage, 1);
+        TlsUtils.writeVersion(context.getClientVersion(), writeMessage, 1);
         TlsUtils.writeUint16(ciphertext.length, writeMessage, 3);
         System.arraycopy(ciphertext, 0, writeMessage, 5, ciphertext.length);
+       
         os.write(writeMessage);
         os.flush();
     }
-
+    
     void updateHandshakeData(byte[] message, int offset, int len)
     {
         hash.update(message, offset, len);
@@ -188,4 +190,5 @@ class RecordStream
         d.doFinal(bs, 0);
         return bs;
     }
+
 }
