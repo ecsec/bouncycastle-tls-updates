@@ -740,8 +740,12 @@ public class TlsProtocolHandler
                 this.failWithError(AlertLevel.fatal, AlertDescription.unexpected_message);
                 break;
         }
-    	} catch (Exception e ){
+    	} catch (IOException e ){
     		e.printStackTrace();
+			throw e; // Needed to send Fatal Error
+    	}catch (Exception e ){
+    		e.printStackTrace();
+			throw new IOException(e.getMessage()); // Needed to send Fatal Error
     	}
     }
 
