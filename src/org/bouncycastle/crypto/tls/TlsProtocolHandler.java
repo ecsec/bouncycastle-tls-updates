@@ -63,6 +63,7 @@ public class TlsProtocolHandler
 
     private boolean closed = false;
     private boolean failedWithError = false;
+    private short alertDesc = 0;
     private boolean appDataReady = false;
     private Hashtable clientExtensions;
 
@@ -82,7 +83,15 @@ public class TlsProtocolHandler
 
     private boolean resumed = false;
     private boolean renegotiated = false;
-
+    
+    // workarround for not throwing a exception when the user cancels the handshake
+    //private boolean userCanceled = false;
+    
+    public int getAlertDescription(){
+    	
+    		return alertDesc;
+    }
+    
     public boolean isDebug() {
         return debug;
     }
@@ -226,6 +235,7 @@ public class TlsProtocolHandler
                 {
                     case CS_SERVER_HELLO_RECEIVED:
                     {
+                    	if(debug)System.out.println("CS_SERVER_HELLO_RECEIVED");
                         // Parse the Certificate message and send to cipher suite
 
                         Certificate serverCertificate = Certificate.parse(is);
@@ -235,8 +245,14 @@ public class TlsProtocolHandler
                         this.keyExchange.processServerCertificate(serverCertificate);
 
                         this.authentication = tlsClient.getAuthentication();
-                        this.authentication.notifyServerCertificate(serverCertificate);
-
+                        try{
+                        	this.authentication.notifyServerCertificate(serverCertificate);
+                        }catch (IOException e) {
+                        	// due to RFC 5246 7.2.2. Error Alerts: we have to send a user_canceled
+                        	// the alert level is fatal because we cannot allow to continue tls handhake with a server we do not trust
+                        	this.failWithError(AlertLevel.fatal, AlertDescription.user_canceled);
+                        	//TODO check do we sent a close notify???
+						}
                         break;
                     }
                     default:
@@ -252,7 +268,7 @@ public class TlsProtocolHandler
                 {
                 
                     case CS_SERVER_CHANGE_CIPHER_SPEC_RECEIVED:
-                        
+                    	if(debug)System.out.println("CS_SERVER_CHANGE_CIPHER_SPEC_RECEIVED");
                         /*
                          * Read the checksum from the finished message, it has always 12
                          * bytes for TLS 1.0 and 36 for SSLv3.
@@ -316,6 +332,7 @@ public class TlsProtocolHandler
                 switch (connection_state)
                 {
                     case CS_CLIENT_HELLO_SEND:
+                    	if(debug)System.out.println("CS_CLIENT_HELLO_SEND");
                         /*
                          * Read the server hello message
                          */
@@ -512,6 +529,7 @@ public class TlsProtocolHandler
                 switch (connection_state)
                 {
                     case CS_SERVER_HELLO_RECEIVED:
+                    	if(debug)System.out.println("CS_SERVER_HELLO_RECEIVED");
 
                         // There was no server certificate message; check it's OK
                         this.keyExchange.skipServerCertificate();
@@ -520,6 +538,7 @@ public class TlsProtocolHandler
                         // NB: Fall through to next case label
 
                     case CS_SERVER_CERTIFICATE_RECEIVED:
+                    	if(debug)System.out.println("CS_SERVER_CERTIFICATE_RECEIVED");
 
                         // There was no server key exchange message; check it's OK
                         this.keyExchange.skipServerKeyExchange();
@@ -527,8 +546,9 @@ public class TlsProtocolHandler
                         // NB: Fall through to next case label
 
                     case CS_SERVER_KEY_EXCHANGE_RECEIVED:
+                    	if(debug)System.out.println("CS_SERVER_KEY_EXCHANGE_RECEIVED");
                     case CS_CERTIFICATE_REQUEST_RECEIVED:
-
+                    	if(debug)System.out.println("CS_CERTIFICATE_REQUEST_RECEIVED");
                         assertEmpty(is);
 
                         connection_state = CS_SERVER_HELLO_DONE_RECEIVED;
@@ -560,7 +580,7 @@ public class TlsProtocolHandler
                             else
                             {
                                 this.keyExchange.processClientCredentials(clientCreds);
-
+                                if(debug)System.out.println("sendClientCertificate");
                                 sendClientCertificate(clientCreds.getCertificate());
                             }
                         }
@@ -569,6 +589,7 @@ public class TlsProtocolHandler
                          * Send the client key exchange message, depending on the key
                          * exchange we are using in our CipherSuite.
                          */
+                        if(debug)System.out.println("sendClientKeyExchange");
                         sendClientKeyExchange();
 
                         connection_state = CS_CLIENT_KEY_EXCHANGE_SEND;
@@ -639,6 +660,7 @@ public class TlsProtocolHandler
                 switch (connection_state)
                 {
                     case CS_SERVER_HELLO_RECEIVED:
+                    	if(debug)System.out.println("CS_SERVER_HELLO_RECEIVED");
 
                         // There was no server certificate message; check it's OK
                         this.keyExchange.skipServerCertificate();
@@ -647,7 +669,7 @@ public class TlsProtocolHandler
                         // NB: Fall through to next case label
 
                     case CS_SERVER_CERTIFICATE_RECEIVED:
-
+                    	if(debug)System.out.println("CS_SERVER_CERTIFICATE_RECEIVED");
                         this.keyExchange.processServerKeyExchange(is);
 
                         assertEmpty(is);
@@ -666,6 +688,7 @@ public class TlsProtocolHandler
                 switch (connection_state)
                 {
                     case CS_SERVER_CERTIFICATE_RECEIVED:
+                    	if(debug)System.out.println("CS_SERVER_CERTIFICATE_RECEIVED");
 
                         // There was no server key exchange message; check it's OK
                         this.keyExchange.skipServerKeyExchange();
@@ -674,6 +697,7 @@ public class TlsProtocolHandler
 
                     case CS_SERVER_KEY_EXCHANGE_RECEIVED:
                     {
+                    	if(debug)System.out.println("CS_SERVER_KEY_EXCHANGE_RECEIVED");
                     	if (this.authentication == null)
                     	{
                             /*
@@ -727,16 +751,21 @@ public class TlsProtocolHandler
                  */
                 if (connection_state == CS_DONE)
                 {
+                	if(debug)System.out.println("CS_DONE");
                     	 // renegotiate this session
                     	this.renegotiated  = true;
                 	 this.connect(this.tlsClient);
                 }
                 break;
             case HandshakeType.client_key_exchange:
+            	if(debug)System.out.println("client_key_exchange");
             case HandshakeType.certificate_verify:
+            	if(debug)System.out.println("certificate_verify");
             case HandshakeType.client_hello:
+            	if(debug)System.out.println("client_hello");
             default:
                 // We do not support this!
+            	if(debug)System.out.println(" We do not support this!");
                 this.failWithError(AlertLevel.fatal, AlertDescription.unexpected_message);
                 break;
         }
@@ -1049,8 +1078,11 @@ public class TlsProtocolHandler
          * We will now read data, until we have completed the handshake.
          */
         while (connection_state != CS_DONE)
-        {
+        {	
             safeReadData();
+          //  if(connection_state == CS_CANCELED){
+            //	return;
+           // }
         }
 
         this.tlsInputStream = new TlsInputStream(this);
@@ -1258,12 +1290,14 @@ public class TlsProtocolHandler
                  */
                 this.failedWithError = true;
             }
+            alertDesc = unexpectedMessage;
             sendAlert(fatal, unexpectedMessage);
             rs.close();
-            if (fatal == AlertLevel.fatal)
+            if (fatal == AlertLevel.fatal )
             {
                 throw new IOException(TLS_ERROR_MESSAGE);
             }
+			
         }
         else
         {
@@ -1287,6 +1321,9 @@ public class TlsProtocolHandler
     {
         if (!closed)
         {
+        	if(connection_state != CS_DONE){
+        		 this.failWithError(AlertLevel.fatal, AlertDescription.user_canceled);
+        	}
             this.failWithError(AlertLevel.warning, AlertDescription.close_notify);
         }
     }
