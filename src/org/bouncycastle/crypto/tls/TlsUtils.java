@@ -1,10 +1,13 @@
 package org.bouncycastle.crypto.tls;
 
+import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.ASN1OctetString;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.Extensions;
 import org.bouncycastle.asn1.x509.KeyUsage;
@@ -309,7 +312,10 @@ public class TlsUtils
             Extension ext = exts.getExtension(X509Extension.keyUsage);
             if (ext != null)
             {
-                KeyUsage ku = KeyUsage.getInstance(ext);
+            	 
+                ASN1OctetString        oct = ext.getExtnValue();
+                ASN1InputStream        extIn = new ASN1InputStream(new ByteArrayInputStream(oct.getOctets()));
+				KeyUsage ku = KeyUsage.getInstance(extIn.readObject());
                 int bits = ku.getBytes()[0] & 0xff;
                 if ((bits & keyUsageBits) != keyUsageBits)
                 {
