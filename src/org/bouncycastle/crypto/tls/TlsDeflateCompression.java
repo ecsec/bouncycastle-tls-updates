@@ -10,15 +10,15 @@ public class TlsDeflateCompression implements TlsCompression {
 
     private final Deflater deflater = new Deflater(Deflater.BEST_SPEED);
     private final Inflater inflater = new Inflater();
-        
+
     @Override
     public OutputStream compress(OutputStream output) {
-	return new DeflaterOutputStream(output, deflater, true);
+        return new DeflaterOutputStream(output, deflater);
     }
 
     @Override
     public OutputStream decompress(OutputStream output) {
-	return new InflaterOutputStream(output, inflater);
+        return new InflaterOutputStream(output, inflater);
     }
 
 }
