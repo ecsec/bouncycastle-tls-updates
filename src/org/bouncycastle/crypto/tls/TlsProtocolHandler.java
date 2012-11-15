@@ -358,7 +358,7 @@ public class TlsProtocolHandler
                         {
                             this.failWithError(AlertLevel.fatal, AlertDescription.illegal_parameter);
                         }
-                        if(Arrays.areEqual(sessionID, tlsClient.getSessionID())){
+                        if(sessionID.length > 0 && Arrays.areEqual(sessionID, tlsClient.getSessionID())){
                             resumed = true;
                         }
                         this.tlsClient.notifySessionID(sessionID);
