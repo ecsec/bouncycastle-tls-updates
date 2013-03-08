@@ -13,26 +13,31 @@ public abstract class AbstractTlsClient implements TlsClient {
     protected int selectedCipherSuite;
     protected int selectedCompressionMethod;
     private boolean secureRenegotiation;
-    private final String fullyQualifiedDomainName;
     private ProtocolVersion clientVersion = ProtocolVersion.TLSv10;
-    
+
     private byte[] sessionID;
 
+    /**
+     * Initialize an AbstractTlsClient.
+     * When a fully qualified domain name is given, it is added to the TLS handshake in the form of an SNI extension
+     * element. The name may be null meaning SNI should not be used.
+     *
+     * @param fqdn Hostname for use in SNI. May be null.
+     */
     protected AbstractTlsClient(String fqdn) {
-	this.fullyQualifiedDomainName = fqdn;
-
-	ByteArrayOutputStream serverList = new ByteArrayOutputStream();
-	ByteArrayOutputStream sniData = new ByteArrayOutputStream();
-	try {
-	    serverList.write(0x00);
-	    TlsUtils.writeOpaque16(fullyQualifiedDomainName.getBytes(), serverList);
-	    TlsUtils.writeOpaque16(serverList.toByteArray(), sniData);
-	} catch (IOException e) {
-	    // TODO Auto-generated catch block
-	    e.printStackTrace();
+	if (fqdn != null) {
+	    ByteArrayOutputStream serverList = new ByteArrayOutputStream();
+	    ByteArrayOutputStream sniData = new ByteArrayOutputStream();
+	    try {
+		serverList.write(0x00);
+		TlsUtils.writeOpaque16(fqdn.getBytes(), serverList);
+		TlsUtils.writeOpaque16(serverList.toByteArray(), sniData);
+	    } catch (IOException e) {
+		// TODO Auto-generated catch block
+		e.printStackTrace();
+	    }
+	    this.clientExtensions.put(new Integer(ExtensionType.server_name), sniData.toByteArray());
 	}
-	this.clientExtensions.put(new Integer(ExtensionType.server_name), sniData.toByteArray());
-
     }
 
     @Override
