@@ -159,7 +159,7 @@ public abstract class AbstractTlsClient
 
     public short[] getCompressionMethods()
     {
-        return new short[]{CompressionMethod._null};
+        return new short[]{CompressionMethod._null, CompressionMethod.DEFLATE};
     }
 
     public void notifySessionID(byte[] sessionID)
@@ -230,6 +230,8 @@ public abstract class AbstractTlsClient
         {
         case CompressionMethod._null:
             return new TlsNullCompression();
+        case CompressionMethod.DEFLATE:
+            return new TlsDeflateCompression();
 
         default:
             /*
