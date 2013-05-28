@@ -1,6 +1,7 @@
 package org.bouncycastle.crypto.tls;
 
 import java.io.IOException;
+import java.util.Vector;
 
 public abstract class PSKTlsClient
     extends AbstractTlsClient
@@ -16,6 +17,30 @@ public abstract class PSKTlsClient
     public PSKTlsClient(TlsCipherFactory cipherFactory, TlsPSKIdentity pskIdentity)
     {
         super(cipherFactory);
+        this.pskIdentity = pskIdentity;
+    }
+
+    public PSKTlsClient(TlsPSKIdentity pskIdentity, String fqdn)
+    {
+        super(fqdn);
+        this.pskIdentity = pskIdentity;
+    }
+
+    public PSKTlsClient(TlsCipherFactory cipherFactory, TlsPSKIdentity pskIdentity, String fqdn)
+    {
+        super(cipherFactory, fqdn);
+        this.pskIdentity = pskIdentity;
+    }
+
+    public PSKTlsClient(TlsPSKIdentity pskIdentity, Vector serverNames)
+    {
+        super(serverNames);
+        this.pskIdentity = pskIdentity;
+    }
+
+    public PSKTlsClient(TlsCipherFactory cipherFactory, TlsPSKIdentity pskIdentity, Vector serverNames)
+    {
+        super(cipherFactory, serverNames);
         this.pskIdentity = pskIdentity;
     }
 

@@ -1,6 +1,7 @@
 package org.bouncycastle.crypto.tls;
 
 import java.io.IOException;
+import java.util.Vector;
 
 public abstract class DefaultTlsClient
     extends AbstractTlsClient
@@ -13,6 +14,26 @@ public abstract class DefaultTlsClient
     public DefaultTlsClient(TlsCipherFactory cipherFactory)
     {
         super(cipherFactory);
+    }
+
+    public DefaultTlsClient(String fqdn)
+    {
+        super(fqdn);
+    }
+
+    public DefaultTlsClient(TlsCipherFactory cipherFactory, String fqdn)
+    {
+        super(cipherFactory, fqdn);
+    }
+
+    public DefaultTlsClient(TlsCipherFactory cipherFactory, Vector serverNames)
+    {
+        super(cipherFactory, serverNames);
+    }
+
+    public DefaultTlsClient(Vector serverNames)
+    {
+        super(serverNames);
     }
 
     public int[] getCipherSuites()

@@ -2,6 +2,7 @@ package org.bouncycastle.crypto.tls;
 
 import java.io.IOException;
 import java.util.Hashtable;
+import java.util.Vector;
 
 import org.bouncycastle.util.Arrays;
 
@@ -26,6 +27,34 @@ public abstract class SRPTlsClient
     public SRPTlsClient(TlsCipherFactory cipherFactory, byte[] identity, byte[] password)
     {
         super(cipherFactory);
+        this.identity = Arrays.clone(identity);
+        this.password = Arrays.clone(password);
+    }
+
+    public SRPTlsClient(byte[] identity, byte[] password, String fqdn)
+    {
+        super(fqdn);
+        this.identity = Arrays.clone(identity);
+        this.password = Arrays.clone(password);
+    }
+
+    public SRPTlsClient(TlsCipherFactory cipherFactory, byte[] identity, byte[] password, String fqdn)
+    {
+        super(cipherFactory, fqdn);
+        this.identity = Arrays.clone(identity);
+        this.password = Arrays.clone(password);
+    }
+
+    public SRPTlsClient(byte[] identity, byte[] password, Vector serverNames)
+    {
+        super(serverNames);
+        this.identity = Arrays.clone(identity);
+        this.password = Arrays.clone(password);
+    }
+
+    public SRPTlsClient(TlsCipherFactory cipherFactory, byte[] identity, byte[] password, Vector serverNames)
+    {
+        super(cipherFactory, serverNames);
         this.identity = Arrays.clone(identity);
         this.password = Arrays.clone(password);
     }
