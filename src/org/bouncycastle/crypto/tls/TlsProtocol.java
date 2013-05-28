@@ -49,7 +49,7 @@ public abstract class TlsProtocol
      * Queues for data from some protocols.
      */
     private ByteQueue applicationDataQueue = new ByteQueue();
-    private ByteQueue changeCipherSpecQueue = new ByteQueue();
+    protected ByteQueue changeCipherSpecQueue = new ByteQueue();
     private ByteQueue alertQueue = new ByteQueue();
     private ByteQueue handshakeQueue = new ByteQueue();
 
@@ -69,6 +69,7 @@ public abstract class TlsProtocol
     private byte[] expected_verify_data = null;
     protected byte[] client_verify_data = null;
     protected byte[] server_verify_data = null;
+    protected boolean resumed = false;
 
     protected SecurityParameters securityParameters = null;
 
@@ -302,7 +303,7 @@ public abstract class TlsProtocol
      * @throws IOException If the message has an invalid content or the handshake is not in the correct
      * state.
      */
-    private void processChangeCipherSpec()
+    protected void processChangeCipherSpec()
         throws IOException
     {
         while (changeCipherSpecQueue.size() > 0)
@@ -559,6 +560,12 @@ public abstract class TlsProtocol
 
         assertEmpty(buf);
 
+        if(resumed)
+        {
+            sendFinishedMessage();
+            recordStream.updateHandshakeData(new byte[]{HandshakeType.finished,0x00,0x00, (byte) expected_verify_data.length}, 0, 4);
+            recordStream.updateHandshakeData(verify_data, 0, (byte) expected_verify_data.length);
+        }
         /*
          * Compare both checksums.
          */

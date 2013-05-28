@@ -78,7 +78,15 @@ public class TlsClientProtocol
 
         this.tlsClient = tlsClient;
 
-        this.securityParameters = new SecurityParameters();
+        // use old security parameters if context already exists (resumed session)
+        if(tlsClient.getClientContext()==null)
+        {
+            this.securityParameters = new SecurityParameters();
+        }
+        else
+        {
+            this.securityParameters = tlsClient.getClientContext().getSecurityParameters();
+        }
         this.securityParameters.entity = ConnectionEnd.client;
         this.securityParameters.clientRandom = createRandomBlock(secureRandom);
 
@@ -498,6 +506,11 @@ public class TlsClientProtocol
             this.failWithError(AlertLevel.fatal, AlertDescription.illegal_parameter);
         }
 
+        if(sessionID.length > 0 && Arrays.areEqual(sessionID, tlsClient.getSessionID()))
+        {
+            resumed = true;
+        }
+
         this.tlsClient.notifySessionID(sessionID);
 
         /*
@@ -691,7 +704,15 @@ public class TlsClientProtocol
         buf.write(securityParameters.clientRandom);
 
         // Session id
-        TlsUtils.writeOpaque8(TlsUtils.EMPTY_BYTES, buf);
+        if(tlsClient.getSessionID()==null)
+        {
+            TlsUtils.writeOpaque8(TlsUtils.EMPTY_BYTES, buf);
+        }
+        else
+        {
+            TlsUtils.writeUint8((short)tlsClient.getSessionID().length, buf);
+            buf.write(tlsClient.getSessionID());
+        }
 
         /*
          * Cipher suites
@@ -774,4 +795,41 @@ public class TlsClientProtocol
 
         safeWriteRecord(ContentType.handshake, message, 0, message.length);
     }
+
+    @Override
+    protected void processChangeCipherSpec()
+        throws IOException
+    {
+        while (changeCipherSpecQueue.size() > 0)
+        {
+            /*
+             * A change cipher spec message is only one byte with the value 1.
+             */
+            byte[] b = new byte[1];
+            changeCipherSpecQueue.read(b, 0, 1, 0);
+            changeCipherSpecQueue.removeData(1);
+            if (b[0] != 1)
+            {
+                /*
+                 * This should never happen.
+                 */
+                this.failWithError(AlertLevel.fatal, AlertDescription.unexpected_message);
+            }
+
+            if(this.resumed)
+            {
+                /*
+                 * Send our change cipher spec
+                 */
+                recordStream.setPendingConnectionState(tlsClient.getCompression(), tlsClient.getCipher());
+                sendChangeCipherSpecMessage();
+                this.connection_state = CS_SERVER_SESSION_TICKET;
+            }
+
+            recordStream.receivedReadCipherSpec();
+
+            handleChangeCipherSpecMessage();
+        }
+    }
+
 }

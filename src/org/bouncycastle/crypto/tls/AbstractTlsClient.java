@@ -3,6 +3,7 @@ package org.bouncycastle.crypto.tls;
 import java.io.IOException;
 import java.util.Hashtable;
 import java.util.Vector;
+import org.bouncycastle.util.Arrays;
 
 public abstract class AbstractTlsClient
     extends AbstractTlsPeer
@@ -19,6 +20,7 @@ public abstract class AbstractTlsClient
     protected int selectedCipherSuite;
     protected short selectedCompressionMethod;
     protected ProtocolVersion clientVersion = ProtocolVersion.TLSv11;
+    protected byte[] sessionID;
 
     public AbstractTlsClient()
     {
@@ -59,6 +61,23 @@ public abstract class AbstractTlsClient
     public void init(TlsClientContext context)
     {
         this.context = context;
+    }
+
+    public byte[] getSessionID()
+    {
+        if (sessionID != null )
+        {
+            return Arrays.copyOf(sessionID, sessionID.length);
+        }
+        else
+        {
+            return new byte[0];
+        }
+    }
+
+    public TlsClientContext getClientContext()
+    {
+        return this.context;
     }
 
     /**
@@ -161,7 +180,7 @@ public abstract class AbstractTlsClient
 
     public void notifySessionID(byte[] sessionID)
     {
-        // Currently ignored
+        this.sessionID = Arrays.copyOf(sessionID, sessionID.length);
     }
 
     public void notifySelectedCipherSuite(int selectedCipherSuite)
