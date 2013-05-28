@@ -16,6 +16,8 @@ public abstract class AbstractTlsClient
     protected int[] namedCurves;
     protected short[] clientECPointFormats, serverECPointFormats;
 
+    protected Vector serverNames;
+
     protected int selectedCipherSuite;
     protected short selectedCompressionMethod;
 
@@ -99,6 +101,17 @@ public abstract class AbstractTlsClient
         return this.clientVersion;
     }
 
+    public void setServerName(String fqdn)
+    {
+	serverNames = new Vector();
+	serverNames.addElement(fqdn);
+    }
+
+    public void setServerNames(Vector serverNames)
+    {
+	serverNames = new Vector(serverNames);
+    }
+
     public boolean isFallback()
     {
         /*
@@ -112,7 +125,8 @@ public abstract class AbstractTlsClient
     public Hashtable getClientExtensions()
         throws IOException
     {
-        Hashtable clientExtensions = null;
+
+        Hashtable clientExtensions = new Hashtable();
 
         ProtocolVersion clientVersion = context.getClientVersion();
 
@@ -151,6 +165,11 @@ public abstract class AbstractTlsClient
 
             TlsECCUtils.addSupportedEllipticCurvesExtension(clientExtensions, namedCurves);
             TlsECCUtils.addSupportedPointFormatsExtension(clientExtensions, clientECPointFormats);
+	}
+
+        if (serverNames != null)
+        {
+            TlsUtils.addServerNameIndicationExtension(clientExtensions, serverNames);
         }
 
         return clientExtensions;
