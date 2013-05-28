@@ -66,6 +66,8 @@ public abstract class TlsProtocol
     private volatile boolean appDataReady = false;
     private volatile boolean splitApplicationDataRecords = true;
     private byte[] expected_verify_data = null;
+    protected byte[] client_verify_data = null;
+    protected byte[] server_verify_data = null;
 
     protected TlsSession tlsSession = null;
     protected SessionParameters sessionParameters = null;
@@ -903,6 +905,7 @@ public abstract class TlsProtocol
         }
 
         byte[] verify_data = TlsUtils.readFully(expected_verify_data.length, buf);
+        server_verify_data = verify_data;
 
         assertEmpty(buf);
 
@@ -978,6 +981,7 @@ public abstract class TlsProtocol
         throws IOException
     {
         byte[] verify_data = createVerifyData(getContext().isServer());
+        client_verify_data = createVerifyData(getContext().isServer());
 
         HandshakeMessage message = new HandshakeMessage(HandshakeType.finished, verify_data.length);
 
