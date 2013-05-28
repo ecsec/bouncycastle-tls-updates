@@ -13,6 +13,7 @@ public interface TlsClient
     ProtocolVersion getClientHelloRecordLayerVersion();
 
     ProtocolVersion getClientVersion();
+    void setClientVersion(ProtocolVersion version);
 
     int[] getCipherSuites();
 

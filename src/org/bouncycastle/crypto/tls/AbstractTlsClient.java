@@ -18,6 +18,7 @@ public abstract class AbstractTlsClient
 
     protected int selectedCipherSuite;
     protected short selectedCompressionMethod;
+    protected ProtocolVersion clientVersion = ProtocolVersion.TLSv11;
 
     public AbstractTlsClient()
     {
@@ -79,9 +80,14 @@ public abstract class AbstractTlsClient
         return getClientVersion();
     }
 
+    public void setClientVersion(ProtocolVersion clientVersion)
+    {
+        this.clientVersion = clientVersion;
+    }
+
     public ProtocolVersion getClientVersion()
     {
-        return ProtocolVersion.TLSv11;
+        return this.clientVersion;
     }
 
     public Hashtable getClientExtensions()
