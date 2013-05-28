@@ -43,6 +43,7 @@ public class TlsUtils
     public static byte[] EMPTY_BYTES = new byte[0];
 
     public static final Integer EXT_signature_algorithms = Integers.valueOf(ExtensionType.signature_algorithms);
+    public static final Integer EXT_server_name_indication = Integers.valueOf(ExtensionType.server_name);
 
     public static boolean isValidUint8(short i)
     {
@@ -452,6 +453,19 @@ public class TlsUtils
     }
 
     /**
+     * Add a 'server_name_indication' extension to existing extensions.
+     *
+     * @param extensions                   A {@link Hashtable} to add the extension to.
+     * @param server names {@link Vector} containing at least 1 server name.
+     * @throws IOException
+     */
+    public static void addServerNameIndicationExtension(Hashtable extensions, Vector serverNames)
+        throws IOException
+    {
+        extensions.put(EXT_server_name_indication, createServerNameIndicationExtension(serverNames));
+    }
+
+    /**
      * Get a 'signature_algorithms' extension from extensions.
      *
      * @param extensions A {@link Hashtable} to get the extension from, if it is present.
@@ -501,6 +515,41 @@ public class TlsUtils
             entry.encode(buf);
         }
 
+        return buf.toByteArray();
+    }
+
+    /**
+     * Create a 'server_name_indication' extension value.
+     *
+     * @param serverNames A {@link Vector} containing at least 1 server name.
+     * @return A byte array suitable for use as an extension value.
+     * @throws IOException
+     */
+    public static byte[] createServerNameIndicationExtension(Vector serverNames)
+        throws IOException
+    {
+
+        if (serverNames == null || serverNames.size() < 1 || serverNames.size() >= (1 << 15))
+        {
+            throw new IllegalArgumentException(
+                "'serverNames' must have length from 1 to (2^15 - 1)");
+        }
+
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        ByteArrayOutputStream serverList = new ByteArrayOutputStream();
+
+        // add each (not empty) server name to the server name list
+        for (int i = 0; i < serverNames.size(); ++i)
+        {
+            String serverName = (String)serverNames.elementAt(i);
+            if (!serverName.isEmpty())
+            {
+                serverList.write(0x00); // server name type host_name
+                writeOpaque16(serverName.getBytes(), serverList);
+            }
+        }
+
+        writeOpaque16(serverList.toByteArray(), buf);
         return buf.toByteArray();
     }
 

@@ -14,6 +14,7 @@ public abstract class AbstractTlsClient
     protected TlsClientContext context;
 
     protected Vector supportedSignatureAlgorithms;
+    protected Vector serverNames;
 
     protected int selectedCipherSuite;
     protected short selectedCompressionMethod;
@@ -26,6 +27,32 @@ public abstract class AbstractTlsClient
     public AbstractTlsClient(TlsCipherFactory cipherFactory)
     {
         this.cipherFactory = cipherFactory;
+    }
+
+    public AbstractTlsClient(String fqdn)
+    {
+        this(new DefaultTlsCipherFactory(), fqdn);
+    }
+
+    public AbstractTlsClient(TlsCipherFactory cipherFactory, String fqdn)
+    {
+        this.cipherFactory = cipherFactory;
+        if (fqdn != null)
+        {
+            serverNames = new Vector();
+            serverNames.addElement(fqdn);
+        }
+    }
+
+    public AbstractTlsClient(Vector serverNames)
+    {
+        this(new DefaultTlsCipherFactory(), serverNames);
+    }
+
+    public AbstractTlsClient(TlsCipherFactory cipherFactory, Vector serverNames)
+    {
+        this.cipherFactory = cipherFactory;
+        this.serverNames = new Vector(serverNames);
     }
 
     public void init(TlsClientContext context)
@@ -61,7 +88,7 @@ public abstract class AbstractTlsClient
         throws IOException
     {
 
-        Hashtable clientExtensions = null;
+        Hashtable clientExtensions = new Hashtable();
 
         ProtocolVersion clientVersion = context.getClientVersion();
 
@@ -96,12 +123,12 @@ public abstract class AbstractTlsClient
             this.supportedSignatureAlgorithms.addElement(new SignatureAndHashAlgorithm(HashAlgorithm.sha1,
                 SignatureAlgorithm.dsa));
 
-            if (clientExtensions == null)
-            {
-                clientExtensions = new Hashtable();
-            }
-
             TlsUtils.addSignatureAlgorithmsExtension(clientExtensions, supportedSignatureAlgorithms);
+        }
+
+        if (serverNames != null)
+        {
+            TlsUtils.addServerNameIndicationExtension(clientExtensions, serverNames);
         }
 
         return clientExtensions;
