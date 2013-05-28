@@ -71,7 +71,7 @@ public class TlsClientProtocol
         {
             throw new IllegalArgumentException("'tlsClient' cannot be null");
         }
-        if (this.tlsClient != null)
+        if (this.tlsClient != null && !this.tlsClient.equals(tlsClient))
         {
             throw new IllegalStateException("connect can only be called once");
         }
@@ -424,8 +424,8 @@ public class TlsClientProtocol
              */
             if (this.connection_state == CS_SERVER_FINISHED)
             {
-                String message = "Renegotiation not supported";
-                raiseWarning(AlertDescription.no_renegotiation, message);
+                secure_renegotiation = true;
+                this.connect(this.tlsClient);
             }
             break;
         case HandshakeType.client_key_exchange:
@@ -596,10 +596,45 @@ public class TlsClientProtocol
                      * field is zero, and if it is not, MUST abort the handshake (by sending a fatal
                      * handshake_failure alert).
                      */
-                    this.secure_renegotiation = true;
-
-                    if (!Arrays.constantTimeAreEqual(renegExtValue, createRenegotiationInfo(TlsUtils.EMPTY_BYTES)))
+                    if (!secure_renegotiation)
                     {
+                        //  Initial Handshake
+                        if (!Arrays.constantTimeAreEqual(renegExtValue, createRenegotiationInfo(TlsUtils.EMPTY_BYTES)))
+                        {
+                            this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
+                        }
+                    }
+                    else
+                    {
+                        // renegotiated Handshake
+                        /*
+                         * RFC 5746 3.5. The client MUST then verify
+                         * that the first half of the
+                         * "renegotiated_connection" field is equal to
+                         * the saved client_verify_data value, and the
+                         * second half is equal to the saved
+                         * server_verify_data value. If they are not,
+                         * the client MUST abort the handshake.
+                         */
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        bos.write(client_verify_data);
+                        bos.write(server_verify_data);
+                        if (!Arrays.constantTimeAreEqual(renegExtValue, createRenegotiationInfo(bos.toByteArray())))
+                        {
+                            this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
+                        }
+                    }
+                }
+                else
+                {
+                    // extension not present
+                    if (secure_renegotiation)
+                    {
+                        /*
+                         * When a ServerHello is received, the client MUST verify that the
+                         * "renegotiation_info" extension is present; if it is not, the
+                         * client MUST abort the handshake.
+                         */
                         this.failWithError(AlertLevel.fatal, AlertDescription.handshake_failure);
                     }
                 }
@@ -665,6 +700,16 @@ public class TlsClientProtocol
 
         // Integer -> byte[]
         this.clientExtensions = this.tlsClient.getClientExtensions();
+
+        /*
+         * RFC 5746 3.5. The client MUST include the "renegotiation_info"
+         * extension in the ClientHello, containing the saved
+         * client_verify_data. The SCSV MUST NOT be included.
+         */
+        if (secure_renegotiation)
+        {
+            this.clientExtensions.put(EXT_RenegotiationInfo, createRenegotiationInfo(client_verify_data));
+        }
 
         // Cipher Suites (and SCSV)
         {
