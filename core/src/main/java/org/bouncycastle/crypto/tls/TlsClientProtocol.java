@@ -110,6 +110,8 @@ public class TlsClientProtocol
 
     protected void cleanupHandshake()
     {
+        this.tlsClient.setSessionToResume(getContext().getResumableSession());
+
         super.cleanupHandshake();
 
         this.selectedSessionID = null;
