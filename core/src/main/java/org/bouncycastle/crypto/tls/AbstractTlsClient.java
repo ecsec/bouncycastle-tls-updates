@@ -21,6 +21,7 @@ public abstract class AbstractTlsClient
     protected int selectedCipherSuite;
     protected short selectedCompressionMethod;
     protected ProtocolVersion clientVersion = ProtocolVersion.TLSv11;
+    protected TlsSession session;
 
     public AbstractTlsClient()
     {
@@ -65,7 +66,11 @@ public abstract class AbstractTlsClient
 
     public TlsSession getSessionToResume()
     {
-        return null;
+        return session;
+    }
+
+    public void setSessionToResume(TlsSession session){
+        this.session = session;
     }
 
     /**

@@ -19,6 +19,8 @@ public interface TlsClient
      */
     TlsSession getSessionToResume();
 
+    void setSessionToResume(TlsSession session);
+
     ProtocolVersion getClientHelloRecordLayerVersion();
 
     ProtocolVersion getClientVersion();
