@@ -24,6 +24,8 @@ public abstract class AbstractTlsClient
     protected ProtocolVersion clientVersion = ProtocolVersion.TLSv12;
     protected ProtocolVersion minClientVersion = ProtocolVersion.TLSv10;
 
+    protected TlsSession session;
+
     public AbstractTlsClient()
     {
         this(new DefaultTlsCipherFactory());
@@ -67,7 +69,11 @@ public abstract class AbstractTlsClient
 
     public TlsSession getSessionToResume()
     {
-        return null;
+        return session;
+    }
+
+    public void setSessionToResume(TlsSession session){
+        this.session = session;
     }
 
     /**
